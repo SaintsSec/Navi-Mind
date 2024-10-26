@@ -9,6 +9,10 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import time
 import sys
+from tqdm import tqdm  # Import tqdm for progress bar
+from torch.utils.tensorboard import SummaryWriter  # Import TensorBoard
+import subprocess  # Import subprocess for starting TensorBoard
+import pylangacq  # Import pylangacq for parsing .cha files
 
 # Setup device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -32,24 +36,29 @@ def load_data_from_directory(directory):
             with open(os.path.join(directory, filename), 'r') as f:
                 json_data = json.load(f)
                 for section in json_data:
-                    for input_text in json_data[section]['inputs']:
-                        for response_text in json_data[section]['responses']:
-                            data.append({"input": input_text, "target": response_text})
+                    inputs = json_data[section]['inputs']
+                    responses = json_data[section]['responses']
+                    data.extend({"input": input_text, "target": response_text} for input_text in inputs for response_text in responses)
+        elif filename.endswith('.cha'):
+            cha_data = pylangacq.read_chat(os.path.join(directory, filename))
+            for utterance in cha_data.utterances():
+                speaker = utterance.speaker
+                if speaker == ['LENO', 'LYNN', 'DORI']:  # Assuming 'CHI' is the child and 'MOT' is the mother
+                    input_text = utterance.utterance
+                elif speaker == ['LENO', 'LYNN', 'DORI']:
+                    response_text = utterance.utterance
+                    data.append({"input": input_text, "target": response_text})
     return data
 
 def preprocess_data(data):
     inputs = [item['input'] for item in data]
     targets = [item['target'] for item in data]
     
-    # Tokenization and encoding
     input_encoder = LabelEncoder()
     target_encoder = LabelEncoder()
     
-    inputs = input_encoder.fit_transform(inputs)
-    targets = target_encoder.fit_transform(targets)
-    
-    inputs = torch.tensor(inputs, dtype=torch.long)
-    targets = torch.tensor(targets, dtype=torch.long)
+    inputs = torch.tensor(input_encoder.fit_transform(inputs), dtype=torch.long)
+    targets = torch.tensor(target_encoder.fit_transform(targets), dtype=torch.long)
     
     return inputs, targets, input_encoder, target_encoder
 
@@ -90,47 +99,61 @@ model = ChatbotModel(input_size, hidden_size, output_size).to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
+# Initialize TensorBoard writer
+writer = SummaryWriter('runs/chatbot_experiment')
+
 # Training loop
-epochs = input('Enter the number of epochs: ')
-num_epochs = int(epochs)
+epochs = int(input('Enter the number of epochs: '))
 train_losses = []
+val_losses = []
 
-def print_progress_bar(iteration, total, length=50):
-    percent = f"{100 * (iteration / float(total)):.1f}"
-    filled_length = int(length * iteration // total)
-    bar = '█' * filled_length + '-' * (length - filled_length)
-    print(f"\rProgress: |{bar}| {percent}% Complete", end='\r')
-
-for epoch in range(num_epochs):
+for epoch in range(epochs):
     model.train()
     epoch_loss = 0
     start_time = time.time()
-    for i, (inputs, targets) in enumerate(train_loader):
-        inputs, targets = inputs.to(device), targets.to(device)
+    
+    # Use tqdm for the progress bar
+    with tqdm(total=len(train_loader), desc=f"Epoch [{epoch+1}/{epochs}]", unit="batch") as pbar:
+        for inputs, targets in train_loader:
+            inputs, targets = inputs.to(device), targets.to(device)
 
-        # Forward pass
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
+            # Forward pass
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
 
-        # Backward pass and optimization
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            # Backward pass and optimization
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        epoch_loss += loss.item()
-
-        # Print progress bar
-        print_progress_bar(i + 1, len(train_loader))
+            epoch_loss += loss.item()
+            pbar.update(1)
 
     avg_epoch_loss = epoch_loss / len(train_loader)
     train_losses.append(avg_epoch_loss)
+    
+    # Validation loop
+    model.eval()
+    val_loss = 0
+    with torch.no_grad():
+        for inputs, targets in val_loader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            val_loss += loss.item()
+    
+    avg_val_loss = val_loss / len(val_loader)
+    val_losses.append(avg_val_loss)
+    
     end_time = time.time()
     epoch_duration = end_time - start_time
 
-    # Enhanced print statement
-    print(f"\033[1;34mEpoch [{epoch+1}/{num_epochs}]\033[0m | \033[1;32mLoss: {avg_epoch_loss:.4f}\033[0m | \033[1;33mDuration: {epoch_duration:.2f}s\033[0m", end='\r')
-    sys.stdout.flush()
-    time.sleep(1)  # Pause for a moment to see the final epoch output
+    # Print epoch statistics
+    print(f"\033[1;34mEpoch [{epoch+1}/{epochs}]\033[0m | \033[1;32mTrain Loss: {avg_epoch_loss:.4f}\033[0m | \033[1;31mVal Loss: {avg_val_loss:.4f}\033[0m | \033[1;33mDuration: {epoch_duration:.2f}s\033[0m")
+
+    # Log metrics to TensorBoard
+    writer.add_scalar('Loss/Train', avg_epoch_loss, epoch)
+    writer.add_scalar('Loss/Validation', avg_val_loss, epoch)
 
 # Save the model
 torch.save(model.state_dict(), 'navi-mind.pth')
@@ -142,12 +165,11 @@ with open('input_encoder.json', 'w') as f:
 with open('target_encoder.json', 'w') as f:
     json.dump(target_encoder.classes_.tolist(), f)
 
-# Plot training loss
-plt.figure(figsize=(10, 5))
-plt.plot(range(1, num_epochs + 1), train_losses, label='Training Loss')
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.title('Training Loss Over Epochs')
-plt.legend()
-plt.savefig('training_loss.png')  # Save the plot as a file
-plt.close()  # Close the plot to avoid display issues
+# Close the TensorBoard writer
+writer.close()
+
+# Start TensorBoard
+subprocess.Popen(['tensorboard', '--logdir=runs'])
+
+print("TensorBoard is running. You can view it at http://localhost:6006")
+ # Close the plot to avoid display issues

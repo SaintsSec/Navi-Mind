@@ -6,3 +6,16 @@ __pycache__/
 
 # Ignore Python venv directories
 mindenv/
+
+# ignore runs directory
+runs/
+
+#ignore .png files
+*.png
+
+#ignore .pth files
+*.pth
+
+#ignore target_encoders.json
+target_encoders.json
+input_encoders.json

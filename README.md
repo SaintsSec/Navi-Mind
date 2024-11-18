@@ -10,20 +10,25 @@
 </div>
 
 > [!important]
-> You will need to generate a venv and activate it in order to use
-> the Navi Mind Toolkit.
-
+> You will need to generate a venv and activate it in order to use the Navi Mind Toolkit.
+> 1. `cd /Navi-Mind`
+> 2. `python3 -m venv mindenv`
+> 3. `source mindenv/bin/activate`
+> 
+> It should also be noted that if there is a version update it is advised that you fully remove the toolkit before setting up again.
+> 1. `sudo rm -rf Navi-Mind`
+> 2. `git clone https://github.com/SaintsSec/Navi-Mind`
+  
 ## ✨ **Key Features of Navi Mind**
 
-- **Open Source from the ground up**: Mind was built for security professionals by security professionals. However, being open source. Mind is not limited to just this function.
-- **The Brain of Navi**: We all know and love [Navi](https://github.com/SaintsSec/Navi) and if you dont you should. Mind serves as both its own project and as the brain of Navi.
-- **Sponsored by CSI Linux**: We built both Navi and Mind with guidance of [CSI Linux](https://clilinux.com). As such both will be included in CSI Linux.
+- **Open Source from the ground up**: Mind was built open source for security professionals by security professionals.
+- **The Brain of Navi**: We all know and love [Navi](https://github.com/SaintsSec/Navi) and if you dont you should.
+- **Sponsored by CSI Linux**: We built both Navi and Mind with guidance of [CSI Linux](https://clilinux.com).
 
 ## 🚀 About Navi Mind
 
 Springboarding off of advice from multiple people, we have come to one resounding understanding. In order to better secure AI. We need to build it ourselves.
-Mind is SSG's crack at this undertaking. Building from the ground up on PyTorch we intend Mind to be the main driving AI behind Navi. both of which will be included
-within CSI Linux.
+Mind is SSG's crack at this undertaking. Building from the ground up on PyTorch we intend Mind to be the main driving AI behind Navi.
 
 ### 🌍 The Imperative of Open Source in AI & Cybersecurity
 
